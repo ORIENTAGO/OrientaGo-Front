@@ -1,50 +1,87 @@
-# Welcome to your Expo app 👋
+# OrientaGo - Frontend Móvil 📱👋
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Frontend móvil de **OrientaGo**, una aplicación de asistencia visual en tiempo real diseñada para personas ciegas. Utiliza la cámara del dispositivo móvil para detectar personas y obstáculos en el entorno, notificando al usuario mediante alertas por voz (Text-to-Speech) y retroalimentación háptica (vibración).
 
-## Get started
+Este proyecto fue desarrollado bajo la estructura de **Clean Architecture** (Arquitectura Limpia) y utiliza **Expo Router** para la gestión de navegación.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## 🏗️ Arquitectura del Proyecto
 
-2. Start the app
+El código está organizado en tres capas desacopladas que garantizan modularidad, testabilidad y facilidad para cambiar de tecnologías (por ejemplo, migrar de un servidor externo a un modelo local TFLite sin tocar la interfaz):
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```text
+OrientaGo-Front/
+├── app/                     # Capa de Enrutamiento (Expo Router)
+│   ├── _layout.tsx          # Inicialización global (Clerk, fuentes, pila de navegación)
+│   ├── index.tsx            # Ruta inicial (Splash)
+│   ├── login.tsx            # Ruta de Login
+│   ├── home.tsx             # Ruta del menú principal
+│   └── walk.tsx             # Ruta del modo caminata
+│
+├── src/
+│   ├── domain/              # Capa de Dominio (Modelos de negocio e interfaces puras)
+│   │   ├── entities/        # Definiciones de tipos (ej. Detection)
+│   │   ├── repositories/    # Interfaces de repositorios (ej. IDetectionRepository)
+│   │   └── services/        # Interfaces de servicios de hardware (ej. ISpeechService)
+│   │
+│   ├── data/                # Capa de Datos (Implementaciones de repositorios y APIs físicas)
+│   │   ├── config/          # Variables de entorno y tokenCache para Clerk
+│   │   ├── repositories/    # Llamadas a la API del modelo YOLO
+│   │   └── services/        # Envolturas de hardware (expo-speech, expo-haptics)
+│   │
+│   └── presentation/        # Capa de Presentación (Vistas y lógica visual)
+│       └── screens/         # Componentes de las pantallas (Splash, Login, Home, WalkMode)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## 🛠️ Tecnologías Utilizadas
 
-To learn more about developing your project with Expo, look at the following resources:
+- **React Native** (Expo SDK 54)
+- **TypeScript** (Tipado estático)
+- **Expo Router** (Enrutamiento basado en archivos)
+- **Clerk** (Autenticación segura con Google)
+- **Expo Camera** (Captura de fotogramas de la cámara)
+- **Expo Speech** (Alertas auditivas mediante Text-to-Speech offline)
+- **Expo Haptics** (Alertas físicas mediante vibraciones hápticas)
+- **Expo Secure Store** (Almacenamiento seguro del token de sesión de Clerk)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+## 🚀 Inicio Rápido
 
-Join our community of developers creating universal apps.
+Sigue estos pasos para ejecutar el proyecto en tu entorno local:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### 1. Clonar e Instalar Dependencias
+Asegúrate de estar en el directorio de la aplicación móvil y ejecuta:
+```bash
+pnpm install
+```
+
+### 2. Configurar Variables de Entorno
+Abre el archivo [src/data/config/env.ts](src/data/config/env.ts) y edita los siguientes valores:
+- **`CLERK_PUBLISHABLE_KEY`**: Llave pública obtenida desde tu panel de Clerk (debe comenzar con `pk_test_...`).
+- **`BACKEND_URL`**: La dirección IP local y puerto de la laptop que ejecuta el backend Python (ej. `http://192.168.100.4:8000`). *Nota: No uses "localhost" porque el celular físico no resolverá esa dirección.*
+
+### 3. Ejecutar el Servidor Metro
+
+#### Opción A: Conexión Local (Misma red Wi-Fi sin bloqueos de Firewall)
+```bash
+pnpm start
+```
+
+#### Opción B: Conexión mediante Túnel (Recomendada para redes públicas o bloqueos de Firewall)
+Crea una dirección URL de túnel público para conectar el celular sin problemas de cortafuegos de Windows:
+```bash
+pnpm start -- --tunnel
+```
+
+---
+
+## 📱 Probar en Dispositivo Físico
+
+1. Descarga la aplicación **Expo Go** desde Google Play Store (Android) o App Store (iOS).
+2. Asegúrate de tener tu teléfono conectado a internet (o a la misma red Wi-Fi de tu computadora si utilizas la opción de inicio local).
+3. Escanea el código QR que se genera en tu terminal de desarrollo con la cámara (en iOS) o desde la app de Expo Go (en Android).
+4. Si el código QR de consola no carga o da error de conexión en Android, abre la app Expo Go e ingresa manualmente la dirección en la barra de búsqueda (por ejemplo: `exp://192.168.100.4:8081`).
