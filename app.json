@@ -1,16 +1,13 @@
 {
   "expo": {
-    "name": "OrientaGo",
-    "slug": "OrientaGo-Front",
+    "name": "Asistente Visual",
+    "slug": "asistencia-visual",
+    "scheme": "orientago",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "orientago",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "backgroundColor": "#0C447C",
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain"
+      "backgroundColor": "#0C447C"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
@@ -22,16 +19,7 @@
     },
     "android": {
       "package": "com.asistenciavisual.app",
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
       "permissions": ["CAMERA", "VIBRATE", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
-    },
-    "web": {
-      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       [

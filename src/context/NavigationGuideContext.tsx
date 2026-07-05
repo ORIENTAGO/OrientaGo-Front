@@ -8,7 +8,7 @@ import {
   seguirBrujula,
 } from "../services/locationService";
 import { calcularRuta, SinConexionError } from "../services/routeService";
-import { hablarEnCola } from "../services/speechService";
+import { hablarEnCola, detenerVoz } from "../services/speechService";
 
 const UMBRAL_RECALCULO_M = 40;
 
@@ -121,6 +121,7 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
     watchHeadingRef.current?.remove();
     watchHeadingRef.current = null;
     setSiguiendo(false);
+    detenerVoz();
   }
 
   // Se activa una sola vez para toda la app: permisos + posición inicial +
@@ -181,6 +182,7 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
 
   const detenerGuia = useCallback(() => {
     detenerGuiaInterna();
+    detenerVoz();
   }, []);
 
   const iniciarGuia = useCallback(() => {
@@ -235,6 +237,7 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
     setRuta(null);
     setDistanciaRestante(null);
     detenerGuiaInterna();
+    detenerVoz();
   }, []);
 
   return (

@@ -1,87 +1,58 @@
-# OrientaGo - Frontend Móvil 📱👋
+# Frontend - App Móvil (Expo + TypeScript)
 
-Frontend móvil de **OrientaGo**, una aplicación de asistencia visual en tiempo real diseñada para personas ciegas. Utiliza la cámara del dispositivo móvil para detectar personas y obstáculos en el entorno, notificando al usuario mediante alertas por voz (Text-to-Speech) y retroalimentación háptica (vibración).
+## 1. Instalar dependencias
 
-Este proyecto fue desarrollado bajo la estructura de **Clean Architecture** (Arquitectura Limpia) y utiliza **Expo Router** para la gestión de navegación.
-
----
-
-## 🏗️ Arquitectura del Proyecto
-
-El código está organizado en tres capas desacopladas que garantizan modularidad, testabilidad y facilidad para cambiar de tecnologías (por ejemplo, migrar de un servidor externo a un modelo local TFLite sin tocar la interfaz):
-
-```text
-OrientaGo-Front/
-├── app/                     # Capa de Enrutamiento (Expo Router)
-│   ├── _layout.tsx          # Inicialización global (Clerk, fuentes, pila de navegación)
-│   ├── index.tsx            # Ruta inicial (Splash)
-│   ├── login.tsx            # Ruta de Login
-│   ├── home.tsx             # Ruta del menú principal
-│   └── walk.tsx             # Ruta del modo caminata
-│
-├── src/
-│   ├── domain/              # Capa de Dominio (Modelos de negocio e interfaces puras)
-│   │   ├── entities/        # Definiciones de tipos (ej. Detection)
-│   │   ├── repositories/    # Interfaces de repositorios (ej. IDetectionRepository)
-│   │   └── services/        # Interfaces de servicios de hardware (ej. ISpeechService)
-│   │
-│   ├── data/                # Capa de Datos (Implementaciones de repositorios y APIs físicas)
-│   │   ├── config/          # Variables de entorno y tokenCache para Clerk
-│   │   ├── repositories/    # Llamadas a la API del modelo YOLO
-│   │   └── services/        # Envolturas de hardware (expo-speech, expo-haptics)
-│   │
-│   └── presentation/        # Capa de Presentación (Vistas y lógica visual)
-│       └── screens/         # Componentes de las pantallas (Splash, Login, Home, WalkMode)
-```
-
----
-
-## 🛠️ Tecnologías Utilizadas
-
-- **React Native** (Expo SDK 54)
-- **TypeScript** (Tipado estático)
-- **Expo Router** (Enrutamiento basado en archivos)
-- **Clerk** (Autenticación segura con Google)
-- **Expo Camera** (Captura de fotogramas de la cámara)
-- **Expo Speech** (Alertas auditivas mediante Text-to-Speech offline)
-- **Expo Haptics** (Alertas físicas mediante vibraciones hápticas)
-- **Expo Secure Store** (Almacenamiento seguro del token de sesión de Clerk)
-
----
-
-## 🚀 Inicio Rápido
-
-Sigue estos pasos para ejecutar el proyecto en tu entorno local:
-
-### 1. Clonar e Instalar Dependencias
-Asegúrate de estar en el directorio de la aplicación móvil y ejecuta:
 ```bash
-pnpm install
+cd frontend
+npm install
 ```
 
-### 2. Configurar Variables de Entorno
-Abre el archivo [src/data/config/env.ts](src/data/config/env.ts) y edita los siguientes valores:
-- **`CLERK_PUBLISHABLE_KEY`**: Llave pública obtenida desde tu panel de Clerk (debe comenzar con `pk_test_...`).
-- **`BACKEND_URL`**: La dirección IP local y puerto de la laptop que ejecuta el backend Python (ej. `http://192.168.100.4:8000`). *Nota: No uses "localhost" porque el celular físico no resolverá esa dirección.*
+## 2. Configurar Clerk (login con Google)
 
-### 3. Ejecutar el Servidor Metro
+1. Crea cuenta gratis en https://clerk.com
+2. Crea una aplicación nueva
+3. En "User & Authentication" → "Social Connections", activa **Google**
+4. Copia la **Publishable Key** (empieza con `pk_test_...`)
+5. Pégala en `src/config/env.ts` en `CLERK_PUBLISHABLE_KEY`
+6. Instala también la dependencia extra necesaria para el OAuth:
+   ```bash
+   npx expo install expo-web-browser
+   ```
 
-#### Opción A: Conexión Local (Misma red Wi-Fi sin bloqueos de Firewall)
+## 3. Configurar la URL del backend
+
+En `src/config/env.ts`, cambia `BACKEND_URL` por la IP local de la laptop
+donde corre el servidor Python (ver backend/README.md paso 4). Ejemplo:
+
+```ts
+export const BACKEND_URL = "http://192.168.1.15:8000";
+```
+
+## 4. Correr la app
+
 ```bash
-pnpm start
+npx expo start
 ```
 
-#### Opción B: Conexión mediante Túnel (Recomendada para redes públicas o bloqueos de Firewall)
-Crea una dirección URL de túnel público para conectar el celular sin problemas de cortafuegos de Windows:
-```bash
-pnpm start -- --tunnel
+- Escanea el QR con la app **Expo Go** (Android/iOS) desde tu celular
+- Asegúrate de que el celular esté en la **misma red WiFi** que la laptop
+- Da permiso de cámara cuando la app lo solicite
+
+## 5. Flujo de pantallas ya implementado
+
+```
+Splash → Login (Google) → Home → Modo Caminata (cámara + alertas de voz)
 ```
 
----
+- **Modo Caminata**: activa la cámara, envía un frame cada 700ms al backend,
+  y si detecta una persona cercana, avisa por voz ("Cuidado, persona a 4.8
+  metros") + vibración.
+- Los otros modos (Exploración, Lectura) están como botones deshabilitados,
+  listos para implementarse en V2.
 
-## 📱 Probar en Dispositivo Físico
+## Siguiente paso recomendado
 
-1. Descarga la aplicación **Expo Go** desde Google Play Store (Android) o App Store (iOS).
-2. Asegúrate de tener tu teléfono conectado a internet (o a la misma red Wi-Fi de tu computadora si utilizas la opción de inicio local).
-3. Escanea el código QR que se genera en tu terminal de desarrollo con la cámara (en iOS) o desde la app de Expo Go (en Android).
-4. Si el código QR de consola no carga o da error de conexión en Android, abre la app Expo Go e ingresa manualmente la dirección en la barra de búsqueda (por ejemplo: `exp://192.168.100.4:8081`).
+Una vez que esto corra en tu celular y veas la alerta de voz funcionando
+con una persona real frente a la cámara, ya tienes el MVP funcional para
+la demo. A partir de ahí, sigue el roadmap del documento del proyecto
+(sección 14) para las siguientes fases.
