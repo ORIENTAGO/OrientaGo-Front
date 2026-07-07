@@ -7,6 +7,7 @@ import {
   Menu,
   UserCircle,
   Volume2,
+  VolumeX,
   Camera,
   MapPin,
   AlertTriangle,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react-native";
 import type { MainTabParamList } from "../navigation/MainTabs";
 import Logo from "../components/Logo";
+import { useVoiceEnabled } from "../hooks/useVoiceEnabled";
 import { colors } from "../theme/colors";
 
 type NavProp = BottomTabNavigationProp<MainTabParamList, "Home">;
@@ -22,6 +24,7 @@ type NavProp = BottomTabNavigationProp<MainTabParamList, "Home">;
 export default function HomeScreen() {
   const navigation = useNavigation<NavProp>();
   const { signOut } = useAuth();
+  const { activada: vozActivada, alternar: alternarVoz } = useVoiceEnabled();
 
   const onProfilePress = useCallback(() => {
     Alert.alert("Cuenta", "¿Deseas cerrar sesión?", [
@@ -49,6 +52,24 @@ export default function HomeScreen() {
             Bienvenido a OrientaGo. ¿Qué deseas hacer hoy?
           </Text>
         </View>
+
+        <Pressable
+          style={[styles.soundToggle, vozActivada ? styles.soundToggleOn : styles.soundToggleOff]}
+          onPress={alternarVoz}
+          accessibilityRole="button"
+          accessibilityLabel={vozActivada ? "Voz activada. Toca para silenciar." : "Voz desactivada. Toca para activar."}
+        >
+          <View style={styles.soundToggleIconWrap}>
+            {vozActivada ? (
+              <Volume2 color={colors.white} size={26} />
+            ) : (
+              <VolumeX color={colors.white} size={26} />
+            )}
+          </View>
+          <Text style={styles.soundToggleText}>
+            {vozActivada ? "Voz activada — toca para silenciar" : "Voz desactivada — toca para activar"}
+          </Text>
+        </Pressable>
 
         <Pressable
           style={[styles.card, { backgroundColor: colors.primary }]}
@@ -171,6 +192,33 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 14,
     color: colors.black,
+  },
+  soundToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderRadius: 14,
+    padding: 16,
+  },
+  soundToggleOn: {
+    backgroundColor: colors.primary,
+  },
+  soundToggleOff: {
+    backgroundColor: colors.textMuted,
+  },
+  soundToggleIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  soundToggleText: {
+    flex: 1,
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: colors.white,
   },
   card: {
     flexDirection: "row",
