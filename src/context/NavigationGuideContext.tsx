@@ -23,12 +23,39 @@ function calcularRumbo(origen: Coordenada, destino: Coordenada): number {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-function instruccionPorRumbo(rumboDestino: number, direccionActual: number): string {
-  const diff = ((rumboDestino - direccionActual + 540) % 360) - 180;
-  if (Math.abs(diff) <= 20) return "Sigue recto.";
-  if (diff > 20 && diff <= 160) return "Gira a la derecha.";
-  if (diff < -20 && diff >= -160) return "Gira a la izquierda.";
-  return "Da la vuelta, vas en dirección contraria.";
+/**
+ * Decide la instrucción de giro con "histéresis": para SALIR de "sigue
+ * recto" hace falta un desvío más marcado que para volver a él. Esto
+ * evita que, con la brújula temblando unos grados, la instrucción esté
+ * saltando entre "gira a la derecha" / "gira a la izquierda" / "sigue
+ * recto" todo el tiempo — solo cambia cuando el giro es real y sostenido.
+ */
+function calcularInstruccionEstable(
+  rumboDestino: number,
+  direccionActual: number,
+  instruccionPrevia: string
+): string {
+  const diff = ((rumboDestino - direccionActual + 540) % 360) - 180; // -180..180
+  const abs = Math.abs(diff);
+
+  const UMBRAL_ENTRAR_RECTO = 18; // para volver a "sigue recto"
+  const UMBRAL_SALIR_RECTO = 30; // para dejar de ir recto
+
+  if (abs > 160) return "Da la vuelta, vas en dirección contraria.";
+
+  if (instruccionPrevia === "Sigue recto.") {
+    if (abs <= UMBRAL_SALIR_RECTO) return "Sigue recto.";
+  } else {
+    if (abs <= UMBRAL_ENTRAR_RECTO) return "Sigue recto.";
+  }
+  return diff > 0 ? "Gira a la derecha." : "Gira a la izquierda.";
+}
+
+/** Promedio circular de varias lecturas de brújula, para suavizar el ruido. */
+function suavizarDireccion(lecturas: number[]): number {
+  const sumaSin = lecturas.reduce((s, a) => s + Math.sin((a * Math.PI) / 180), 0);
+  const sumaCos = lecturas.reduce((s, a) => s + Math.cos((a * Math.PI) / 180), 0);
+  return ((Math.atan2(sumaSin, sumaCos) * 180) / Math.PI + 360) % 360;
 }
 
 function distanciaMetros(a: Coordenada, b: Coordenada): number {
@@ -86,12 +113,15 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
 
   const watchPosRef = useRef<Location.LocationSubscription | null>(null);
   const watchHeadingRef = useRef<Location.LocationSubscription | null>(null);
+  const evaluarGuiaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bufferBrujulaRef = useRef<number[]>([]);
   const origenRutaRef = useRef<Coordenada | null>(null);
   const destinoRef = useRef<LugarBuscado | null>(null);
   const modoRef = useRef<ModoTransporte>("auto");
   const siguiendoRef = useRef(false);
   const ultimaInstruccionRef = useRef("");
   const ultimoAnuncioRef = useRef(0);
+  const ultimoRecordatorioRef = useRef(0);
 
   useEffect(() => {
     destinoRef.current = destino;
@@ -120,6 +150,11 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
   function detenerGuiaInterna() {
     watchHeadingRef.current?.remove();
     watchHeadingRef.current = null;
+    if (evaluarGuiaIntervalRef.current) {
+      clearInterval(evaluarGuiaIntervalRef.current);
+      evaluarGuiaIntervalRef.current = null;
+    }
+    bufferBrujulaRef.current = [];
     setSiguiendo(false);
     detenerVoz();
   }
@@ -176,6 +211,7 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
       activo = false;
       watchPosRef.current?.remove();
       watchHeadingRef.current?.remove();
+      if (evaluarGuiaIntervalRef.current) clearInterval(evaluarGuiaIntervalRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -188,29 +224,51 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
   const iniciarGuia = useCallback(() => {
     if (!destino || !ruta) return;
     setSiguiendo(true);
+    ultimaInstruccionRef.current = "";
+    ultimoRecordatorioRef.current = Date.now();
     hablarEnCola(
       `Iniciando guía hacia ${destino.nombreCorto}. ${formatearDistancia(ruta.distanciaMetros)}, ${formatearDuracion(ruta.duracionSegundos)}.`
     );
+
+    const EVALUAR_CADA_MS = 5000; // pausa entre evaluaciones: nada de reaccionar a cada temblor
+    const RECORDATORIO_CADA_MS = 20000; // reafirma la dirección aunque no haya cambiado
+
     (async () => {
       watchHeadingRef.current = await seguirBrujula((gradosNorte) => {
-        if (!userLocation || !destinoRef.current) return;
+        // Solo acumula lecturas; no decide ni habla nada aquí todavía.
+        const buffer = bufferBrujulaRef.current;
+        buffer.push(gradosNorte);
+        if (buffer.length > 8) buffer.shift();
+      });
+
+      evaluarGuiaIntervalRef.current = setInterval(() => {
+        if (!userLocation || !destinoRef.current || bufferBrujulaRef.current.length === 0) return;
+
+        const direccionSuavizada = suavizarDireccion(bufferBrujulaRef.current);
         const rumbo = calcularRumbo(userLocation, destinoRef.current.coordenada);
-        const instruccion = instruccionPorRumbo(rumbo, gradosNorte);
-        setInstruccionActual(instruccion);
+        const nuevaInstruccion = calcularInstruccionEstable(
+          rumbo,
+          direccionSuavizada,
+          ultimaInstruccionRef.current
+        );
 
         const ahora = Date.now();
-        const cambio = instruccion !== ultimaInstruccionRef.current;
-        const pasaronVarios = ahora - ultimoAnuncioRef.current > 8000;
-        // "Sigue recto" solo se anuncia una vez (cuando cambia la instrucción).
-        // Las instrucciones de giro o vuelta sí se repiten cada 8s por seguridad.
-        const esSigueRecto = instruccion === "Sigue recto.";
-        const debeAnunciar = cambio || (!esSigueRecto && pasaronVarios);
-        if (debeAnunciar) {
-          hablarEnCola(instruccion);
-          ultimaInstruccionRef.current = instruccion;
+        const cambioReal = nuevaInstruccion !== ultimaInstruccionRef.current;
+        const tocaRecordatorio = ahora - ultimoRecordatorioRef.current > RECORDATORIO_CADA_MS;
+
+        if (cambioReal) {
+          setInstruccionActual(nuevaInstruccion);
+          hablarEnCola(nuevaInstruccion);
+          ultimaInstruccionRef.current = nuevaInstruccion;
           ultimoAnuncioRef.current = ahora;
+          ultimoRecordatorioRef.current = ahora;
+        } else if (tocaRecordatorio) {
+          // Recordatorio calmado: repite la misma instrucción cada cierto
+          // tiempo, para confirmar que sigue guiando sin agobiar.
+          hablarEnCola(nuevaInstruccion);
+          ultimoRecordatorioRef.current = ahora;
         }
-      });
+      }, EVALUAR_CADA_MS);
     })();
   }, [destino, ruta, userLocation]);
 
