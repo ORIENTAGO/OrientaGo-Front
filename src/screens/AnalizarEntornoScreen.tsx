@@ -8,6 +8,7 @@ import { ChevronLeft, Volume2, Play, Square } from "lucide-react-native";
 import type { MainTabParamList } from "../navigation/MainTabs";
 import { detectFrame, Detection } from "../services/detectionService";
 import { hablarPrioridad } from "../services/speechService";
+import { useVoiceEnabled } from "../hooks/useVoiceEnabled";
 import { colors } from "../theme/colors";
 
 type NavProp = BottomTabNavigationProp<MainTabParamList, "Explore">;
@@ -30,7 +31,7 @@ export default function AnalizarEntornoScreen() {
   const navigation = useNavigation<NavProp>();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const { activada: voiceEnabled, alternar: alternarVoz } = useVoiceEnabled();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [description, setDescription] = useState(
@@ -183,7 +184,7 @@ export default function AnalizarEntornoScreen() {
         </Pressable>
         <Text style={styles.headerTitle}>ANALIZAR ENTORNO</Text>
         <Pressable
-          onPress={() => setVoiceEnabled((v) => !v)}
+          onPress={alternarVoz}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={voiceEnabled ? "Silenciar voz" : "Activar voz"}

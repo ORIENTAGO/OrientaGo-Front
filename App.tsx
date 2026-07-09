@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ClerkProvider } from "@clerk/clerk-expo";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
@@ -9,10 +10,10 @@ import {
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
 import AppNavigator from "./src/navigation/AppNavigator";
-import SessionGuard from "./src/components/SessionGuard";
 import { tokenCache } from "./src/config/tokenCache";
 import { CLERK_PUBLISHABLE_KEY } from "./src/config/env";
 import { colors } from "./src/theme/colors";
+import { cargarPreferenciaDeVoz } from "./src/services/speechService";
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -21,6 +22,10 @@ export default function App() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  useEffect(() => {
+    cargarPreferenciaDeVoz();
+  }, []);
 
   if (!fontsLoaded) {
     return (
@@ -33,7 +38,6 @@ export default function App() {
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <StatusBar style="auto" />
-      <SessionGuard />
       <AppNavigator />
     </ClerkProvider>
   );

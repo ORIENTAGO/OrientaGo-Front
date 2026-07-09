@@ -9,9 +9,9 @@ type Props = {
 };
 
 /**
- * Logo de OrientaGo: ícono real exportado de Figma (assets/logo-icon.png)
- * + wordmark en texto (para poder cambiar su color según la pantalla:
- * blanco en el Splash, azul oscuro en Home/Login, etc.)
+ * Ícono compacto de OrientaGo (persona con bastón + pin de ubicación) +
+ * texto "OrientaGo". Se usa en lugares con poco espacio (header de Home,
+ * Login). Para el lockup completo con eslogan, usar <LogoCompleto />.
  */
 export default function Logo({
   size = 48,
@@ -23,7 +23,7 @@ export default function Logo({
     <View style={styles.row}>
       <Image
         source={require("../../assets/logo-icon.png")}
-        style={{ width: size, height: size * 0.78 }}
+        style={{ width: size, height: size * (655 / 801) }}
         resizeMode="contain"
       />
       {showWordmark && (
@@ -34,6 +34,23 @@ export default function Logo({
         </Text>
       )}
     </View>
+  );
+}
+
+/**
+ * Lockup oficial completo: ícono + "OrientaGo" + eslogan, con su propio
+ * fondo en degradado claro ya incluido en el diseño. Se usa en el Splash
+ * y el Login, a tamaño grande.
+ */
+export function LogoCompleto({ width = 320 }: { width?: number }) {
+  const height = width * (313 / 743);
+  return (
+    <Image
+      source={require("../../assets/logo-lockup.png")}
+      style={{ width, height }}
+      resizeMode="contain"
+      accessibilityLabel="OrientaGo. Tu guía. Tu camino. Tu libertad."
+    />
   );
 }
 

@@ -19,6 +19,7 @@ export const colors = {
   border: "#E2E6EA",
   backgroundGray: "#F4F6F8",
   disabled: "#9AAAB8",
+  splashBackground: "#F1F5FA", // fondo claro del lockup oficial de OrientaGo
 };
 
 export const typography = {
