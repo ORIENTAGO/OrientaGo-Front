@@ -201,7 +201,11 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
         const ahora = Date.now();
         const cambio = instruccion !== ultimaInstruccionRef.current;
         const pasaronVarios = ahora - ultimoAnuncioRef.current > 8000;
-        if (cambio || pasaronVarios) {
+        // "Sigue recto" solo se anuncia una vez (cuando cambia la instrucción).
+        // Las instrucciones de giro o vuelta sí se repiten cada 8s por seguridad.
+        const esSigueRecto = instruccion === "Sigue recto.";
+        const debeAnunciar = cambio || (!esSigueRecto && pasaronVarios);
+        if (debeAnunciar) {
           hablarEnCola(instruccion);
           ultimaInstruccionRef.current = instruccion;
           ultimoAnuncioRef.current = ahora;

@@ -9,7 +9,9 @@
     "splash": {
       "backgroundColor": "#0C447C"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
@@ -19,7 +21,16 @@
     },
     "android": {
       "package": "com.asistenciavisual.app",
-      "permissions": ["CAMERA", "VIBRATE", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+      "permissions": [
+        "CAMERA",
+        "VIBRATE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
       [
@@ -34,6 +45,11 @@
           "locationWhenInUsePermission": "Esta app usa tu ubicación para guiarte paso a paso hacia tu destino."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "19a45943-abe9-474d-8b9e-ac9eb038cfd4"
+      }
+    }
   }
 }

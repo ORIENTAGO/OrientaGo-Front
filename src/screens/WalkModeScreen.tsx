@@ -9,11 +9,12 @@ import { detectFrame, Detection } from "../services/detectionService";
 
 type Props = NativeStackScreenProps<RootStackParamList, "WalkMode">;
 
-// Frecuencia de envío de frames al servidor. 700ms es un buen punto de
-// partida para la demo por WiFi; bájalo si el servidor responde rápido.
+// Frecuencia de envío de frames al servidor 700ms
 const FRAME_INTERVAL_MS = 700;
 // Evita repetir la misma alerta de voz todo el tiempo
 const ALERT_COOLDOWN_MS = 3000;
+// Solo alertar si el obstáculo está a menos de esta distancia (metros)
+const DISTANCE_DANGER_M = 2.0;
 
 export default function WalkModeScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -49,15 +50,18 @@ export default function WalkModeScreen({ navigation }: Props) {
     if (!cameraRef.current) return;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.4,
+        quality: 0.15,
         skipProcessing: true,
       });
       if (!photo?.uri) return;
 
       const detections = await detectFrame(photo.uri);
-      if (detections.length > 0) {
-        // Alerta sobre la detección más cercana (mayor prioridad)
-        const closest = detections.reduce((a, b) =>
+      // Solo considerar obstáculos en trayectoria directa y cercanos
+      const dangerous = detections.filter(
+        (d) => d.en_trayectoria && d.distancia_aprox_m <= DISTANCE_DANGER_M
+      );
+      if (dangerous.length > 0) {
+        const closest = dangerous.reduce((a, b) =>
           a.distancia_aprox_m < b.distancia_aprox_m ? a : b
         );
         speakAlert(closest);

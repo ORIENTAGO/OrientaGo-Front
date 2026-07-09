@@ -7,11 +7,6 @@ const LAST_BACKGROUND_KEY = "orientago_last_background_at";
 // Tiempo de inactividad antes de pedir inicio de sesión de nuevo.
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
 
-/**
- * No renderiza nada. Vigila cuándo la app pasa a segundo plano y, si al
- * volver ha pasado más de SESSION_TIMEOUT_MS, cierra la sesión para que
- * el usuario vea la pantalla de Login de nuevo.
- */
 export default function SessionGuard() {
   const { isSignedIn, signOut } = useAuth();
   const appState = useRef(AppState.currentState);
