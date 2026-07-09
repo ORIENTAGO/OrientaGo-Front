@@ -10,11 +10,14 @@ import { detectFrame, Detection } from "../services/detectionService";
 type Props = NativeStackScreenProps<RootStackParamList, "WalkMode">;
 
 // Frecuencia de envío de frames al servidor 700ms
-const FRAME_INTERVAL_MS = 700;
+const FRAME_INTERVAL_MS = 500;
 // Evita repetir la misma alerta de voz todo el tiempo
+// Evita repetir cualquier alerta de voz en menos de 3 segundos (cooldown global)
 const ALERT_COOLDOWN_MS = 3000;
 // Solo alertar si el obstáculo está a menos de esta distancia (metros)
 const DISTANCE_DANGER_M = 2.0;
+// Periodo de gracia de 2 segundos al iniciar para evitar alertas ruidosas de inmediato
+const START_WARMUP_MS = 2000;
 
 export default function WalkModeScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -23,6 +26,7 @@ export default function WalkModeScreen({ navigation }: Props) {
   const [lastMessage, setLastMessage] = useState("Iniciando detección...");
   const lastAlertLabelRef = useRef<string | null>(null);
   const lastAlertTimeRef = useRef(0);
+  const startTimeRef = useRef(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -33,9 +37,13 @@ export default function WalkModeScreen({ navigation }: Props) {
 
   const speakAlert = useCallback((detection: Detection) => {
     const now = Date.now();
-    const isSameLabel = lastAlertLabelRef.current === detection.label;
+    
+    // 1. Evitar alertar por voz en los primeros segundos mientras se acomoda la cámara
+    if (now - startTimeRef.current < START_WARMUP_MS) return;
+
+    // 2. Cooldown global de voz (máximo una frase cada 3 segundos)
     const withinCooldown = now - lastAlertTimeRef.current < ALERT_COOLDOWN_MS;
-    if (isSameLabel && withinCooldown) return;
+    if (withinCooldown) return;
 
     lastAlertLabelRef.current = detection.label;
     lastAlertTimeRef.current = now;
@@ -76,6 +84,8 @@ export default function WalkModeScreen({ navigation }: Props) {
 
   useEffect(() => {
     if (isRunning && permission?.granted) {
+      startTimeRef.current = Date.now();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       intervalRef.current = setInterval(captureAndDetect, FRAME_INTERVAL_MS);
     }
     return () => {

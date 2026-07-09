@@ -17,6 +17,10 @@ type NavProp = BottomTabNavigationProp<MainTabParamList, "Explore">;
 const FRAME_INTERVAL_MS = 1000;
 const ALERT_COOLDOWN_MS = 3000;
 const CLEAR_ANNOUNCE_INTERVAL_MS = 8000;
+// Solo alertar por voz si el obstáculo está a menos de esta distancia (metros)
+const DISTANCE_DANGER_M = 2.0;
+// Periodo de gracia de 2 segundos al iniciar para evitar alertas ruidosas de inmediato
+const START_WARMUP_MS = 2000;
 const BOX_COLORS = [colors.success, "#D9A400", colors.primary, colors.danger];
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -42,6 +46,7 @@ export default function AnalizarEntornoScreen() {
   const lastAlertLabelRef = useRef<string | null>(null);
   const lastAlertTimeRef = useRef(0);
   const lastClearAnnounceRef = useRef(0);
+  const startTimeRef = useRef(Date.now());
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -81,9 +86,13 @@ export default function AnalizarEntornoScreen() {
     (detection: Detection) => {
       if (!voiceEnabled) return;
       const now = Date.now();
-      const isSameLabel = lastAlertLabelRef.current === detection.label;
+      
+      // 1. Evitar alertar por voz en los primeros segundos
+      if (now - startTimeRef.current < START_WARMUP_MS) return;
+
+      // 2. Cooldown global de voz (máximo una frase cada 3 segundos)
       const withinCooldown = now - lastAlertTimeRef.current < ALERT_COOLDOWN_MS;
-      if (isSameLabel && withinCooldown) return;
+      if (withinCooldown) return;
 
       lastAlertLabelRef.current = detection.label;
       lastAlertTimeRef.current = now;
@@ -100,7 +109,7 @@ export default function AnalizarEntornoScreen() {
     isCapturingRef.current = true;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.4,
+        quality: 0.15,
         skipProcessing: true,
         shutterSound: false,
       });
@@ -110,15 +119,17 @@ export default function AnalizarEntornoScreen() {
       setDetections(dets);
       setDescription(buildDescription(dets));
 
-      if (dets.length > 0) {
-        const closest = dets.reduce((a, b) =>
+      // Solo alertar por voz si hay obstáculos en trayectoria directa y cercanos
+      const dangerous = dets.filter(
+        (d) => d.en_trayectoria && d.distancia_aprox_m <= DISTANCE_DANGER_M
+      );
+      if (dangerous.length > 0) {
+        const closest = dangerous.reduce((a, b) =>
           a.distancia_aprox_m < b.distancia_aprox_m ? a : b
         );
         speakAlert(closest);
       } else {
-        // Sin obstáculos: igual confirma por voz cada cierto tiempo que
-        // el análisis sigue activo (el silencio total no distingue entre
-        // "todo despejado" y "se quedó pegado").
+        // Sin obstáculos en trayectoria: confirma por voz cada cierto tiempo que el camino está libre
         const ahora = Date.now();
         if (ahora - lastClearAnnounceRef.current > CLEAR_ANNOUNCE_INTERVAL_MS) {
           hablarEnCola("Camino despejado.");
@@ -141,7 +152,9 @@ export default function AnalizarEntornoScreen() {
     } else {
       setIsAnalyzing(true);
       setDescription("Analizando…");
+      startTimeRef.current = Date.now();
       lastClearAnnounceRef.current = Date.now();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       intervalRef.current = setInterval(captureAndDetect, FRAME_INTERVAL_MS);
     }
   }, [isAnalyzing, stopAnalysis, captureAndDetect]);
