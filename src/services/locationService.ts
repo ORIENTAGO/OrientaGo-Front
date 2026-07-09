@@ -23,7 +23,7 @@ export async function solicitarPermisoUbicacion(): Promise<EstadoUbicacion> {
 export async function obtenerUbicacionActual(): Promise<Coordenada | null> {
   try {
     const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.BestForNavigation,
     });
     return { latitud: pos.coords.latitude, longitud: pos.coords.longitude };
   } catch {
@@ -39,16 +39,18 @@ export type ActualizacionUbicacion = {
 /**
  * Suscribe a cambios de posición. Se actualiza solo cuando el usuario se
  * mueve una distancia mínima (distanceInterval), no en un intervalo fijo,
- * para ahorrar batería y datos.
+ * para ahorrar batería y datos. Usa la mayor precisión posible
+ * (BestForNavigation) porque el rumbo hacia el destino es muy sensible
+ * al error de posición cuando el destino está cerca.
  */
 export async function seguirUbicacion(
   onUpdate: (u: ActualizacionUbicacion) => void
 ): Promise<Location.LocationSubscription> {
   return Location.watchPositionAsync(
     {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 4000,
-      distanceInterval: 8, // metros
+      accuracy: Location.Accuracy.BestForNavigation,
+      timeInterval: 2000,
+      distanceInterval: 3, // metros
     },
     (pos) => {
       onUpdate({

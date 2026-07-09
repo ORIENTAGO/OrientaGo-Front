@@ -4,19 +4,19 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
-import { ChevronLeft, Volume2, Play, Square } from "lucide-react-native";
+import { ChevronLeft, Volume2, Play, Square, Navigation2 } from "lucide-react-native";
 import type { MainTabParamList } from "../navigation/MainTabs";
 import { detectFrame, Detection } from "../services/detectionService";
-import { hablarPrioridad } from "../services/speechService";
+import { hablarPrioridad, hablarEnCola } from "../services/speechService";
 import { useVoiceEnabled } from "../hooks/useVoiceEnabled";
+import { useNavigationGuide, formatearDistancia } from "../context/NavigationGuideContext";
 import { colors } from "../theme/colors";
 
 type NavProp = BottomTabNavigationProp<MainTabParamList, "Explore">;
 
 const FRAME_INTERVAL_MS = 1000;
 const ALERT_COOLDOWN_MS = 3000;
-// Solo alertar por voz si el obstáculo está a menos de esta distancia (metros)
-const DISTANCE_DANGER_M = 2.0;
+const CLEAR_ANNOUNCE_INTERVAL_MS = 8000;
 const BOX_COLORS = [colors.success, "#D9A400", colors.primary, colors.danger];
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -32,6 +32,8 @@ export default function AnalizarEntornoScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const { activada: voiceEnabled, alternar: alternarVoz } = useVoiceEnabled();
+  const { siguiendo: navegandoActivo, instruccionActual, destino: destinoActivo, distanciaRestante } =
+    useNavigationGuide();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [description, setDescription] = useState(
@@ -39,6 +41,7 @@ export default function AnalizarEntornoScreen() {
   );
   const lastAlertLabelRef = useRef<string | null>(null);
   const lastAlertTimeRef = useRef(0);
+  const lastClearAnnounceRef = useRef(0);
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -97,7 +100,7 @@ export default function AnalizarEntornoScreen() {
     isCapturingRef.current = true;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.15,
+        quality: 0.4,
         skipProcessing: true,
         shutterSound: false,
       });
@@ -107,15 +110,20 @@ export default function AnalizarEntornoScreen() {
       setDetections(dets);
       setDescription(buildDescription(dets));
 
-      // Solo alertar por voz si hay obstáculos en trayectoria directa y cercanos
-      const dangerous = dets.filter(
-        (d) => d.en_trayectoria && d.distancia_aprox_m <= DISTANCE_DANGER_M
-      );
-      if (dangerous.length > 0) {
-        const closest = dangerous.reduce((a, b) =>
+      if (dets.length > 0) {
+        const closest = dets.reduce((a, b) =>
           a.distancia_aprox_m < b.distancia_aprox_m ? a : b
         );
         speakAlert(closest);
+      } else {
+        // Sin obstáculos: igual confirma por voz cada cierto tiempo que
+        // el análisis sigue activo (el silencio total no distingue entre
+        // "todo despejado" y "se quedó pegado").
+        const ahora = Date.now();
+        if (ahora - lastClearAnnounceRef.current > CLEAR_ANNOUNCE_INTERVAL_MS) {
+          hablarEnCola("Camino despejado.");
+          lastClearAnnounceRef.current = ahora;
+        }
       }
     } catch (err) {
       console.error("Error al detectar frame:", err);
@@ -133,6 +141,7 @@ export default function AnalizarEntornoScreen() {
     } else {
       setIsAnalyzing(true);
       setDescription("Analizando…");
+      lastClearAnnounceRef.current = Date.now();
       intervalRef.current = setInterval(captureAndDetect, FRAME_INTERVAL_MS);
     }
   }, [isAnalyzing, stopAnalysis, captureAndDetect]);
@@ -144,8 +153,15 @@ export default function AnalizarEntornoScreen() {
   }, []);
 
   const onDescribePress = useCallback(() => {
-    hablarPrioridad(description);
-  }, [description]);
+    if (navegandoActivo && destinoActivo) {
+      const partesRuta = `Vas hacia ${destinoActivo.nombreCorto}. ${instruccionActual || "Calculando dirección."}${
+        distanciaRestante !== null ? ` Faltan ${formatearDistancia(distanciaRestante)}.` : ""
+      }`;
+      hablarPrioridad(`${description} ${partesRuta}`);
+    } else {
+      hablarPrioridad(description);
+    }
+  }, [description, navegandoActivo, destinoActivo, instruccionActual, distanciaRestante]);
 
   if (!permission) return <View style={styles.container} />;
 
@@ -221,6 +237,21 @@ export default function AnalizarEntornoScreen() {
         {!isAnalyzing && (
           <View style={styles.idleOverlay}>
             <Text style={styles.idleOverlayText}>Análisis en pausa</Text>
+          </View>
+        )}
+
+        {navegandoActivo && destinoActivo && (
+          <View style={styles.navBanner} accessibilityLiveRegion="polite">
+            <Navigation2 color={colors.white} size={18} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.navBannerTitle} numberOfLines={1}>
+                Hacia {destinoActivo.nombreCorto}
+              </Text>
+              <Text style={styles.navBannerSubtitle} numberOfLines={1}>
+                {instruccionActual || "Calculando dirección…"}
+                {distanciaRestante !== null ? ` · ${formatearDistancia(distanciaRestante)}` : ""}
+              </Text>
+            </View>
           </View>
         )}
       </View>
@@ -299,6 +330,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
+  navBanner: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    right: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(12,68,124,0.92)",
+    borderRadius: 12,
+    padding: 12,
+  },
+  navBannerTitle: { color: colors.white, fontFamily: "Inter_700Bold", fontSize: 13 },
+  navBannerSubtitle: { color: "#CFE0F0", fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 1 },
   boundingBox: { position: "absolute", borderWidth: 2, borderRadius: 4 },
   boxLabel: {
     position: "absolute",

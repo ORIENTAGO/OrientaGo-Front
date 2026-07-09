@@ -58,6 +58,21 @@ function suavizarDireccion(lecturas: number[]): number {
   return ((Math.atan2(sumaSin, sumaCos) * 180) / Math.PI + 360) % 360;
 }
 
+/**
+ * Promedio simple de las últimas posiciones GPS, para amortiguar el
+ * "salto" normal del GPS (5-15 m de error típico) que si no se suaviza,
+ * hace que el rumbo calculado hacia el destino cambie bruscamente aunque
+ * la persona esté quieta.
+ */
+function suavizarPosicion(lecturas: Coordenada[]): Coordenada {
+  const n = lecturas.length;
+  const suma = lecturas.reduce(
+    (acc, p) => ({ latitud: acc.latitud + p.latitud, longitud: acc.longitud + p.longitud }),
+    { latitud: 0, longitud: 0 }
+  );
+  return { latitud: suma.latitud / n, longitud: suma.longitud / n };
+}
+
 function distanciaMetros(a: Coordenada, b: Coordenada): number {
   const R = 6371000;
   const toRad = (v: number) => (v * Math.PI) / 180;
@@ -115,6 +130,7 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
   const watchHeadingRef = useRef<Location.LocationSubscription | null>(null);
   const evaluarGuiaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const bufferBrujulaRef = useRef<number[]>([]);
+  const bufferPosicionRef = useRef<Coordenada[]>([]);
   const origenRutaRef = useRef<Coordenada | null>(null);
   const destinoRef = useRef<LugarBuscado | null>(null);
   const modoRef = useRef<ModoTransporte>("auto");
@@ -185,17 +201,27 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
 
       watchPosRef.current = await seguirUbicacion(({ coordenada, precisionMetros }) => {
         if (!activo) return;
-        setUserLocation(coordenada);
         setAccuracy(precisionMetros);
 
+        // Descarta lecturas muy imprecisas (típico en interiores o con
+        // mala señal): mejor mantener la última posición buena que
+        // aceptar un salto falso de 20+ metros.
+        if (precisionMetros > 25) return;
+
+        const buffer = bufferPosicionRef.current;
+        buffer.push(coordenada);
+        if (buffer.length > 4) buffer.shift();
+        const posicionSuavizada = suavizarPosicion(buffer);
+        setUserLocation(posicionSuavizada);
+
         if (destinoRef.current) {
-          const restante = distanciaMetros(coordenada, destinoRef.current.coordenada);
+          const restante = distanciaMetros(posicionSuavizada, destinoRef.current.coordenada);
           setDistanciaRestante(restante);
 
           if (origenRutaRef.current) {
-            const desplazamiento = distanciaMetros(origenRutaRef.current, coordenada);
+            const desplazamiento = distanciaMetros(origenRutaRef.current, posicionSuavizada);
             if (desplazamiento > UMBRAL_RECALCULO_M) {
-              recalcularRuta(coordenada, destinoRef.current.coordenada, modoRef.current);
+              recalcularRuta(posicionSuavizada, destinoRef.current.coordenada, modoRef.current);
             }
           }
 
@@ -243,6 +269,22 @@ export function NavigationGuideProvider({ children }: { children: ReactNode }) {
 
       evaluarGuiaIntervalRef.current = setInterval(() => {
         if (!userLocation || !destinoRef.current || bufferBrujulaRef.current.length === 0) return;
+
+        const distanciaAlDestino = distanciaMetros(userLocation, destinoRef.current.coordenada);
+
+        // A corta distancia, un giro fino ya no es confiable (el margen
+        // de error del GPS pesa demasiado sobre el cálculo). Mejor avisar
+        // una sola vez que está cerca, en vez de seguir dando vueltas.
+        const UMBRAL_CERCA_M = 20;
+        if (distanciaAlDestino < UMBRAL_CERCA_M) {
+          if (ultimaInstruccionRef.current !== "Ya casi llegas.") {
+            setInstruccionActual("Ya casi llegas.");
+            hablarEnCola("Ya casi llegas, sigue con cuidado.");
+            ultimaInstruccionRef.current = "Ya casi llegas.";
+            ultimoRecordatorioRef.current = Date.now();
+          }
+          return;
+        }
 
         const direccionSuavizada = suavizarDireccion(bufferBrujulaRef.current);
         const rumbo = calcularRumbo(userLocation, destinoRef.current.coordenada);
