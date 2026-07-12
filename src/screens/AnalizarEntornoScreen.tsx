@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
-import { ChevronLeft, Volume2, Play, Square, Navigation2 } from "lucide-react-native";
+import { ChevronLeft, Volume2, Play, Square, Navigation2, SwitchCamera } from "lucide-react-native";
 import type { MainTabParamList } from "../navigation/MainTabs";
 import { detectFrame, Detection } from "../services/detectionService";
 import { hablarPrioridad, hablarEnCola } from "../services/speechService";
@@ -17,10 +17,7 @@ type NavProp = BottomTabNavigationProp<MainTabParamList, "Explore">;
 const FRAME_INTERVAL_MS = 1000;
 const ALERT_COOLDOWN_MS = 3000;
 const CLEAR_ANNOUNCE_INTERVAL_MS = 8000;
-// Solo alertar por voz si el obstáculo está a menos de esta distancia (metros)
-const DISTANCE_DANGER_M = 2.0;
-// Periodo de gracia de 2 segundos al iniciar para evitar alertas ruidosas de inmediato
-const START_WARMUP_MS = 2000;
+const PROXIMIDAD_ALERTA_M = 2.0; // solo avisa de obstáculos dentro de este radio
 const BOX_COLORS = [colors.success, "#D9A400", colors.primary, colors.danger];
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -31,6 +28,15 @@ function labelFor(d: Detection) {
   return `${nombre} ${d.distancia_aprox_m} m`;
 }
 
+/** Mensaje corto, con la urgencia justa según qué tan cerca está — no
+ * siempre "Cuidado", para que la voz no se sienta pesada/repetitiva. */
+function mensajeAlerta(d: Detection): string {
+  const nombre = d.label;
+  if (d.distancia_aprox_m <= 1.0) return `¡Cuidado! ${nombre} muy cerca.`;
+  if (d.distancia_aprox_m <= 1.5) return `${nombre} cerca, cuidado.`;
+  return `${nombre} a ${d.distancia_aprox_m} metros.`;
+}
+
 export default function AnalizarEntornoScreen() {
   const navigation = useNavigation<NavProp>();
   const [permission, requestPermission] = useCameraPermissions();
@@ -39,6 +45,7 @@ export default function AnalizarEntornoScreen() {
   const { siguiendo: navegandoActivo, instruccionActual, destino: destinoActivo, distanciaRestante } =
     useNavigationGuide();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [facing, setFacing] = useState<"back" | "front">("back");
   const [detections, setDetections] = useState<Detection[]>([]);
   const [description, setDescription] = useState(
     "Presiona “Iniciar análisis” para comenzar."
@@ -46,13 +53,20 @@ export default function AnalizarEntornoScreen() {
   const lastAlertLabelRef = useRef<string | null>(null);
   const lastAlertTimeRef = useRef(0);
   const lastClearAnnounceRef = useRef(0);
-  const startTimeRef = useRef(Date.now());
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, [permission, requestPermission]);
+
+  const alternarCamara = useCallback(() => {
+    setFacing((f) => {
+      const nueva = f === "back" ? "front" : "back";
+      hablarPrioridad(nueva === "front" ? "Cámara frontal activada" : "Cámara trasera activada");
+      return nueva;
+    });
+  }, []);
 
   const stopAnalysis = useCallback(() => {
     if (intervalRef.current) {
@@ -86,18 +100,14 @@ export default function AnalizarEntornoScreen() {
     (detection: Detection) => {
       if (!voiceEnabled) return;
       const now = Date.now();
-      
-      // 1. Evitar alertar por voz en los primeros segundos
-      if (now - startTimeRef.current < START_WARMUP_MS) return;
-
-      // 2. Cooldown global de voz (máximo una frase cada 3 segundos)
+      const isSameLabel = lastAlertLabelRef.current === detection.label;
       const withinCooldown = now - lastAlertTimeRef.current < ALERT_COOLDOWN_MS;
-      if (withinCooldown) return;
+      if (isSameLabel && withinCooldown) return;
 
       lastAlertLabelRef.current = detection.label;
       lastAlertTimeRef.current = now;
 
-      hablarPrioridad(`Cuidado, ${detection.label} a ${detection.distancia_aprox_m} metros`);
+      hablarPrioridad(mensajeAlerta(detection));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     },
     [voiceEnabled]
@@ -109,7 +119,7 @@ export default function AnalizarEntornoScreen() {
     isCapturingRef.current = true;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.15,
+        quality: 0.4,
         skipProcessing: true,
         shutterSound: false,
       });
@@ -119,17 +129,20 @@ export default function AnalizarEntornoScreen() {
       setDetections(dets);
       setDescription(buildDescription(dets));
 
-      // Solo alertar por voz si hay obstáculos en trayectoria directa y cercanos
-      const dangerous = dets.filter(
-        (d) => d.en_trayectoria && d.distancia_aprox_m <= DISTANCE_DANGER_M
-      );
-      if (dangerous.length > 0) {
-        const closest = dangerous.reduce((a, b) =>
+      // Solo avisa por voz de lo que realmente importa: obstáculos dentro
+      // del radio de proximidad. Algo detectado lejos (ej. un carro a
+      // 8 metros) no amerita interrumpir con una alerta todavía.
+      const cercanos = dets.filter((d) => d.distancia_aprox_m <= PROXIMIDAD_ALERTA_M);
+
+      if (cercanos.length > 0) {
+        const masCercano = cercanos.reduce((a, b) =>
           a.distancia_aprox_m < b.distancia_aprox_m ? a : b
         );
-        speakAlert(closest);
+        speakAlert(masCercano);
       } else {
-        // Sin obstáculos en trayectoria: confirma por voz cada cierto tiempo que el camino está libre
+        // Sin obstáculos cerca: igual confirma por voz cada cierto tiempo
+        // que el análisis sigue activo (el silencio total no distingue
+        // entre "todo despejado" y "se quedó pegado").
         const ahora = Date.now();
         if (ahora - lastClearAnnounceRef.current > CLEAR_ANNOUNCE_INTERVAL_MS) {
           hablarEnCola("Camino despejado.");
@@ -152,9 +165,7 @@ export default function AnalizarEntornoScreen() {
     } else {
       setIsAnalyzing(true);
       setDescription("Analizando…");
-      startTimeRef.current = Date.now();
       lastClearAnnounceRef.current = Date.now();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       intervalRef.current = setInterval(captureAndDetect, FRAME_INTERVAL_MS);
     }
   }, [isAnalyzing, stopAnalysis, captureAndDetect]);
@@ -212,18 +223,28 @@ export default function AnalizarEntornoScreen() {
           <ChevronLeft color={colors.white} size={24} />
         </Pressable>
         <Text style={styles.headerTitle}>ANALIZAR ENTORNO</Text>
-        <Pressable
-          onPress={alternarVoz}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={voiceEnabled ? "Silenciar voz" : "Activar voz"}
-        >
-          <Volume2 color={voiceEnabled ? colors.white : "#7A93AC"} size={22} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={alternarCamara}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={facing === "back" ? "Cambiar a cámara frontal" : "Cambiar a cámara trasera"}
+          >
+            <SwitchCamera color={colors.white} size={22} />
+          </Pressable>
+          <Pressable
+            onPress={alternarVoz}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={voiceEnabled ? "Silenciar voz" : "Activar voz"}
+          >
+            <Volume2 color={voiceEnabled ? colors.white : "#7A93AC"} size={22} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.previewWrap}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" animateShutter={false} />
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} animateShutter={false} />
 
         {isAnalyzing &&
           detections.map((d, i) => {
@@ -326,6 +347,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 14,
     letterSpacing: 0.5,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 18,
   },
   previewWrap: { flex: 1, backgroundColor: colors.black },
   idleOverlay: {
